@@ -1,0 +1,19 @@
+# Python
+backend/.venv/
+__pycache__/
+*.pyc
+
+# Secrets — never commit real keys
+.env
+.env.local
+backend/.env
+frontend/.env.local
+apikey.txt
+code.txt
+
+# Node / Next (frontend has its own .gitignore too)
+node_modules/
+.next/
+
+# Backup of frontend's old embedded git repo (reversible move)
+frontend/_git_embedded_backup/
