@@ -1,21 +1,17 @@
-"""The core pipeline: audio + image -> transcript -> vision answer -> speech.
+"""The core pipeline: audio + image -> transcript -> companion turn -> speech.
 
 Provider-agnostic. Services are resolved once at construction from the factory,
-so switching mock->live is purely a config change.
+so switching mock->live is purely a config change. The vision model doubles as
+the companion brain: one call decides intent, produces the spoken reply, and
+emits side-effects (see app/companion.py).
 """
 
 from dataclasses import dataclass
 
+from app import companion
 from app.config import settings
 from app.demo import RecordingStore
 from app.services.factory import get_stt, get_tts, get_vision
-
-PROMPT_TEMPLATE = (
-    "You are VoxSight, a calm, concise assistant for a visually impaired person. "
-    "Based on the image, answer their question in 1-3 short spoken sentences. "
-    "Lead with what matters for safety and orientation (obstacles, distances, "
-    "directions). Question: {question}"
-)
 
 
 @dataclass
@@ -24,6 +20,7 @@ class Turn:
     answer: str
     audio: bytes
     mime: str = "audio/mpeg"
+    intent: str = "describe"
 
 
 class Orchestrator:
@@ -54,8 +51,18 @@ class Orchestrator:
         # API), use it and skip backend STT. Otherwise run the STT service.
         if not transcript:
             transcript = await self.stt.transcribe(audio_bytes)
-        prompt = PROMPT_TEMPLATE.format(question=transcript)
-        answer = await self.vision.describe(image_b64, prompt)
+
+        # Phase 2/3 will feed real memory here; empty for now.
+        facts: list[str] = []
+        reminders: list[dict] = []
+
+        prompt = companion.build_prompt(transcript, facts, reminders)
+        raw = await self.vision.describe(image_b64, prompt)
+        result = companion.parse(raw, transcript)
+
+        # Side-effects (memory writes / reminders) are applied in Phase 2/3.
+
+        answer = result.spoken
         audio = await self.tts.synthesize(answer)
         mime = "audio/wav" if settings.tts_provider == "mock" else "audio/mpeg"
 
@@ -63,4 +70,10 @@ class Orchestrator:
         if self.mode == "capture":
             self.store.save(transcript, answer, audio, mime)
 
-        return Turn(transcript=transcript, answer=answer, audio=audio, mime=mime)
+        return Turn(
+            transcript=transcript,
+            answer=answer,
+            audio=audio,
+            mime=mime,
+            intent=result.intent,
+        )
