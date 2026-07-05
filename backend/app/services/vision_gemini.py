@@ -24,16 +24,15 @@ class GeminiVision:
             # header looks like: data:image/png;base64
             mime = header[5:].split(";")[0] or mime
 
+        # Text-only intents (remember/recall/remind) arrive with no frame — send
+        # just the text, since Gemini rejects an empty inline_data part.
+        parts: list[dict] = [{"text": question}]
+        if data:
+            parts.append({"inline_data": {"mime_type": mime, "data": data}})
+
         url = f"{BASE}/{settings.gemini_model}:generateContent?key={settings.gemini_api_key}"
         payload = {
-            "contents": [
-                {
-                    "parts": [
-                        {"text": question},
-                        {"inline_data": {"mime_type": mime, "data": data}},
-                    ]
-                }
-            ],
+            "contents": [{"parts": parts}],
             "generationConfig": {
                 "maxOutputTokens": 300,
                 "temperature": 0.4,

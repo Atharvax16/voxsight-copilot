@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from app import companion
 from app.config import settings
 from app.demo import RecordingStore
+from app.memory_store import MemoryStore
 from app.services.factory import get_stt, get_tts, get_vision
 
 
@@ -27,6 +28,7 @@ class Orchestrator:
     def __init__(self) -> None:
         self.mode = settings.demo_mode
         self.store = RecordingStore()
+        self.memory = MemoryStore()
         # In replay mode we never touch the providers, so don't construct them.
         if self.mode != "replay":
             self.stt = get_stt()
@@ -52,15 +54,17 @@ class Orchestrator:
         if not transcript:
             transcript = await self.stt.transcribe(audio_bytes)
 
-        # Phase 2/3 will feed real memory here; empty for now.
-        facts: list[str] = []
-        reminders: list[dict] = []
+        facts = self.memory.facts()
+        reminders = self.memory.reminders()
 
         prompt = companion.build_prompt(transcript, facts, reminders)
         raw = await self.vision.describe(image_b64, prompt)
         result = companion.parse(raw, transcript)
 
-        # Side-effects (memory writes / reminders) are applied in Phase 2/3.
+        # Side-effects: persist anything the companion decided to remember.
+        if result.memory_add:
+            self.memory.add_fact(result.memory_add)
+        # Reminders are applied in Phase 3.
 
         answer = result.spoken
         audio = await self.tts.synthesize(answer)

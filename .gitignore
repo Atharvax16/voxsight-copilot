@@ -21,3 +21,6 @@ frontend/_git_embedded_backup/
 # Test artifacts
 backend/_ws_test_output.mp3
 backend/_*.mp3
+
+# Runtime companion memory (personal state, not source)
+backend/memory_store.json

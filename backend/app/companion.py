@@ -25,8 +25,9 @@ INTENTS = (
     "other",
 )
 
-# Marker the mock provider uses to recover the transcript from the prompt.
+# Markers the mock provider uses to recover context from the prompt.
 _SAID_PREFIX = "The user just said:"
+_FACTS_HEADER = "Facts you remember about the user:"
 
 
 @dataclass
@@ -41,7 +42,7 @@ def build_prompt(transcript: str, facts: list[str], reminders: list[dict]) -> st
     if facts or reminders:
         mem_lines = []
         if facts:
-            mem_lines.append("Facts you remember about the user:")
+            mem_lines.append(_FACTS_HEADER)
             mem_lines += [f"- {f}" for f in facts]
         if reminders:
             mem_lines.append("Their reminders:")
@@ -107,3 +108,17 @@ def transcript_from_prompt(prompt: str) -> str:
         if after.startswith('"'):
             return after[1:].split('"', 1)[0]
     return ""
+
+
+def facts_from_prompt(prompt: str) -> list[str]:
+    """Recover the injected memory facts from a companion prompt (mock provider)."""
+    if _FACTS_HEADER not in prompt:
+        return []
+    facts: list[str] = []
+    for line in prompt.split(_FACTS_HEADER, 1)[1].splitlines():
+        line = line.strip()
+        if line.startswith("- "):
+            facts.append(line[2:].strip())
+        elif line and facts:  # next section (e.g. reminders) — stop
+            break
+    return facts

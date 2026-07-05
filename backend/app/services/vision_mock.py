@@ -9,7 +9,9 @@ VISION_PROVIDER=gemini for real image understanding.
 import asyncio
 import json
 
-from app.companion import transcript_from_prompt
+from app.companion import facts_from_prompt, transcript_from_prompt
+
+_QUESTION_STARTS = ("what", "who", "do you remember", "did i", "recall", "am i")
 
 
 class MockVision:
@@ -25,6 +27,15 @@ class MockVision:
         elif any(w in said for w in ("find", "where", "locate")):
             intent = "find"
             spoken = "[mock] Your mug is on the table, just to your right."
+        elif said.startswith(_QUESTION_STARTS):
+            # Recall: answer from the facts injected into the prompt.
+            intent = "recall"
+            facts = facts_from_prompt(question)
+            spoken = (
+                "[mock] Here's what you told me: " + "; ".join(facts) + "."
+                if facts
+                else "[mock] I don't have anything remembered about that yet."
+            )
         elif said.startswith("remember") or "this is" in said or "allergic" in said:
             intent = "remember"
             spoken = "[mock] Got it — I'll remember that."
@@ -33,7 +44,7 @@ class MockVision:
             intent = "remind"
             spoken = "[mock] Okay, I'll remind you."
             reminder = {"text": said, "when": "later"}
-        elif any(w in said for w in ("reminder", "schedule", "what's on", "today")):
+        elif any(w in said for w in ("reminder", "schedule", "today")):
             intent = "list_reminders"
             spoken = "[mock] You have no reminders set yet."
         else:
