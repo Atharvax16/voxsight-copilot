@@ -17,3 +17,7 @@ node_modules/
 
 # Backup of frontend's old embedded git repo (reversible move)
 frontend/_git_embedded_backup/
+
+# Test artifacts
+backend/_ws_test_output.mp3
+backend/_*.mp3

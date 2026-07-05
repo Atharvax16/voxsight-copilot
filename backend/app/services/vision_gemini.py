@@ -34,7 +34,14 @@ class GeminiVision:
                     ]
                 }
             ],
-            "generationConfig": {"maxOutputTokens": 300, "temperature": 0.4},
+            "generationConfig": {
+                "maxOutputTokens": 300,
+                "temperature": 0.4,
+                # gemini-2.5-flash "thinks" by default, which burns the token
+                # budget and truncates the answer. Disable it: faster + complete,
+                # and this is a describe-what-you-see task, not a reasoning one.
+                "thinkingConfig": {"thinkingBudget": 0},
+            },
         }
         async with httpx.AsyncClient(timeout=60) as client:
             resp = await client.post(url, json=payload)
