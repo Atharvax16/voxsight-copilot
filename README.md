@@ -56,6 +56,36 @@ mock transcript + answer and hear a short tone (mock TTS). That proves the full 
 
 ---
 
+## Demo mode — present & record video without burning credits
+
+Live API calls cost credits (ElevenLabs' free tier is ~10 min of audio total),
+so **don't demo off the real APIs** — you can hit a limit mid-presentation. Instead
+capture a few real responses once, then replay them for free. Set `DEMO_MODE` in
+`backend/.env`:
+
+| Mode | What it does |
+| :--- | :--- |
+| `off` | Normal live pipeline (default). |
+| `capture` | Live pipeline **and** saves every response to `backend/recordings/`. |
+| `replay` | Serves saved responses — **zero API calls**, instant, can't fail live. |
+
+**Workflow:**
+
+1. `DEMO_MODE=capture`, restart backend. Open the app and ask your scripted
+   questions while pointing the camera at real things. Each turn is saved
+   (`recordings/manifest.json` + `clip_NNN.mp3`). This spends a little credit — once.
+2. `DEMO_MODE=replay`, restart backend. Now rehearse, present, and record the
+   promo video as many times as you like — **free**. Replay matches the saved clip
+   whose question best overlaps what you ask, so say a captured question and you get
+   that exact real answer + audio back.
+3. `/health` shows the active `demo_mode` so you can confirm you're safe before
+   going on camera.
+
+> Deploying the demo? Commit `backend/recordings/` and run the server with
+> `DEMO_MODE=replay` so random clicks on your live link never drain credits.
+
+---
+
 ## Tomorrow: go live (key-swap checklist)
 
 Bring each service online **one at a time** and re-test between each — easier to debug.

@@ -35,6 +35,7 @@ app.add_middleware(
 async def health() -> dict:
     return {
         "status": "ok",
+        "demo_mode": settings.demo_mode,
         "providers": {
             "stt": settings.stt_provider,
             "vision": settings.vision_provider,
@@ -74,7 +75,7 @@ async def ws(websocket: WebSocket) -> None:
             await websocket.send_json(
                 {
                     "type": "audio",
-                    "mime": "audio/wav" if settings.tts_provider == "mock" else "audio/mpeg",
+                    "mime": turn.mime,
                     "data": base64.b64encode(turn.audio).decode("ascii"),
                 }
             )

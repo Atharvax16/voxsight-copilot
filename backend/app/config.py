@@ -11,6 +11,11 @@ class Settings(BaseSettings):
     vision_provider: str = "mock"
     tts_provider: str = "mock"
 
+    # Demo mode: off | capture | replay. `replay` serves saved responses with
+    # zero API calls — use it to rehearse/present/record video without burning
+    # credits. `capture` records real responses so you can build the replay set.
+    demo_mode: str = "off"
+
     # API keys (blank tonight).
     wispr_api_key: str = ""
     qwen_api_key: str = ""

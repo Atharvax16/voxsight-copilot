@@ -73,7 +73,28 @@ def test_ws_roundtrip():
     return answer["text"], audio_bytes
 
 
+def test_replay_store_roundtrip(tmp_path=None):
+    """Demo replay: a saved response comes back verbatim, no providers involved."""
+    import tempfile
+    from pathlib import Path as _P
+
+    from app.demo import RecordingStore
+
+    d = _P(tmp_path) if tmp_path else _P(tempfile.mkdtemp())
+    store = RecordingStore(d)
+    assert store.count() == 0 and store.match("anything") is None
+
+    store.save("what is in front of me", "A blue door, two steps ahead.", b"MP3DATA" * 50, "audio/mpeg")
+    # Best-overlap match returns the saved clip's real answer + audio.
+    rec = store.match("hey what's in front of me right now")
+    assert rec is not None
+    assert rec.answer == "A blue door, two steps ahead."
+    assert rec.audio == b"MP3DATA" * 50 and rec.mime == "audio/mpeg"
+    print("\n--- replay store round-trip OK (no API) ---")
+
+
 if __name__ == "__main__":
+    test_replay_store_roundtrip()
     ans, audio = test_ws_roundtrip()
     out = Path(__file__).resolve().parents[1] / "_ws_test_output.mp3"
     out.write_bytes(audio)
