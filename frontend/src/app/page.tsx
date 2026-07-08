@@ -4,6 +4,7 @@ import { useRef } from "react";
 import { Camera, CameraHandle } from "@/components/Camera";
 import { Mic } from "@/components/Mic";
 import { useSocket } from "@/lib/useSocket";
+import { useGeolocation } from "@/lib/useGeolocation";
 
 const STATUS_LABEL: Record<string, string> = {
   connecting: "Connecting…",
@@ -16,14 +17,17 @@ const STATUS_LABEL: Record<string, string> = {
 
 export default function Home() {
   const cameraRef = useRef<CameraHandle>(null);
-  const { status, transcript, answer, error, ask } = useSocket();
+  const { status, transcript, answer, error, navStep, ask, sendLocation } =
+    useSocket();
+  const geo = useGeolocation(sendLocation);
 
   const sttMode =
     (process.env.NEXT_PUBLIC_STT_MODE as "browser" | "backend") ?? "browser";
 
   function handleSubmit(payload: { audioB64?: string; transcript?: string }) {
     const frame = cameraRef.current?.captureFrame() ?? "";
-    ask(frame, payload);
+    // Attach the current position so "take me to…" / "where am I" resolve nearby.
+    ask(frame, { ...payload, location: geo.location ?? undefined });
   }
 
   const busy = status === "thinking" || status === "speaking";
@@ -33,7 +37,8 @@ export default function Home() {
       <header>
         <h1 className="text-3xl font-black tracking-tight">VoxSight</h1>
         <p className="text-sm text-neutral-400">
-          Point the camera, hold the button, and ask about your surroundings.
+          Point the camera, hold the button, and ask about your surroundings — or
+          say “take me to…” for walking directions.
         </p>
       </header>
 
@@ -48,6 +53,40 @@ export default function Home() {
         }`}
       >
         {error || STATUS_LABEL[status] || status}
+      </div>
+
+      {/* Navigation / walk mode: opt-in location sharing + turn-by-turn readout. */}
+      <div className="rounded-lg bg-neutral-900 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold">Navigation</p>
+            <p className="text-xs text-neutral-400">
+              {geo.enabled ? "Location on" : "Off — enable to get directions"}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={geo.enabled ? geo.disable : geo.enable}
+            aria-pressed={geo.enabled}
+            className={`rounded-full px-4 py-2 text-sm font-bold transition ${
+              geo.enabled
+                ? "bg-emerald-500 text-black"
+                : "bg-white text-black active:scale-95"
+            }`}
+          >
+            {geo.enabled ? "Location on" : "Enable navigation"}
+          </button>
+        </div>
+        {geo.error && <p className="mt-2 text-xs text-red-300">{geo.error}</p>}
+        {navStep && (
+          <p aria-live="assertive" className="mt-3 text-sm font-medium text-emerald-300">
+            ➜ {navStep}
+          </p>
+        )}
+        <p className="mt-3 text-[11px] leading-snug text-neutral-500">
+          Directions are advisory and can be wrong or delayed. Keep using your cane
+          or guide dog — VoxSight helps you decide, it doesn’t watch the road for you.
+        </p>
       </div>
 
       {(transcript || answer) && (
