@@ -45,6 +45,9 @@ def test_parse_extracts_sideeffects():
 
 def _run_intent(transcript: str) -> dict:
     """Drive one WS turn fully offline and return the last two messages."""
+    import importlib
+    import tempfile
+
     import app.config as cfg
 
     cfg.settings.demo_mode = "off"
@@ -52,10 +55,15 @@ def _run_intent(transcript: str) -> dict:
     cfg.settings.vision_provider = "mock"
     cfg.settings.tts_provider = "mock"
 
+    # Isolate memory so a leftover demo fact can't reroute intents (a fact makes
+    # "what..." questions look like recall). Point the store at a fresh temp file.
+    import app.memory_store as mem
+
+    mem.MEMORY_PATH = Path(tempfile.mkdtemp()) / "mem.json"
+
     from starlette.testclient import TestClient
 
     import app.orchestrator as orch
-    import importlib
 
     importlib.reload(orch)
     from app.main import app

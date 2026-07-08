@@ -1,0 +1,34 @@
+{
+  "clips": [
+    {
+      "transcript": "What's in front of me?",
+      "answer": "Immediately in front of you is a black banner with the word \"CURSOR\" and a logo. Beyond that, there's a long room with people seated on green stools, facing a stage or presentation area.",
+      "audio": "clip_001.mp3",
+      "mime": "audio/mpeg"
+    },
+    {
+      "transcript": "Can you please read it for me?",
+      "answer": "The can is a 330ml Coca-Cola. It is best served chilled. The ingredients are Carbonated Water, Sugar, Colour (Caramel E150d), Acid (Phosphoric Acid), Natural Flavourings, Caffeine Flavouring.",
+      "audio": "clip_002.mp3",
+      "mime": "audio/mpeg"
+    },
+    {
+      "transcript": "Can you please read the content for me?",
+      "answer": "Reading the nutrition information for Coke Original Taste. Per 100ml, there are 180 kilojoules and 42 kilocalories. It contains 0 grams of fat, 10.6 grams of carbohydrates, and 0 grams of protein. Salt content is 0 grams.",
+      "audio": "clip_003.mp3",
+      "mime": "audio/mpeg"
+    },
+    {
+      "transcript": "Remember, I'm allergic to peanuts, so can I order this- Yeah, you can go ahead and close-- close the door on us and put it there.",
+      "answer": "I will remember your peanut allergy.",
+      "audio": "clip_004.mp3",
+      "mime": "audio/mpeg"
+    },
+    {
+      "transcript": "So can I order this to eat?",
+      "answer": "This is the Tenders Bargain Bucket. Please contact the restaurant for allergen information.",
+      "audio": "clip_005.mp3",
+      "mime": "audio/mpeg"
+    }
+  ]
+}
