@@ -86,6 +86,41 @@ capture a few real responses once, then replay them for free. Set `DEMO_MODE` in
 
 ---
 
+## Navigation & walk mode (Phase 1)
+
+VoxSight can give **spoken walking directions**, not just describe what's in front of
+you. It reuses the same voice button — the companion decides the intent — plus your
+device location.
+
+**What you can say:**
+
+| Say… | Intent | What happens |
+| :--- | :--- | :--- |
+| "Take me to the pharmacy on Dawson Street" | `navigate` | Geocodes the place, routes on foot, speaks the first step. |
+| "Where am I?" | `where_am_i` | Reverse-geocodes your location and describes the surroundings. |
+| "Stop navigation" | `stop_navigation` | Clears the active route. |
+
+Turn-by-turn is **deterministic** — a routing engine produces the steps, not the AI —
+so it costs no model calls per step. Once a route is active, the browser streams your
+position (`watchPosition`) as lightweight `location` messages; the backend announces the
+next maneuver only when you come within `NAV_ANNOUNCE_M` of it, and arrival within
+`NAV_ARRIVE_M`. Tap **Enable navigation** in the app to opt in (this triggers the
+browser's location prompt). Location is used transiently and is **not** persisted.
+
+**Config** (`backend/.env`): `NAV_PROVIDER=mock` runs fully offline (canned route — good
+for the demo/replay). For live directions:
+
+```
+NAV_PROVIDER=openrouteservice
+OPENROUTESERVICE_API_KEY=<free key from openrouteservice.org>
+```
+
+> ⚠️ **Safety:** walk-mode directions are *advisory* and can be wrong or delayed. VoxSight
+> complements a white cane or guide dog — it does not replace them, and a phone can't watch
+> the road for you. This is stated in-app and worth repeating in any demo.
+
+---
+
 ## Tomorrow: go live (key-swap checklist)
 
 Bring each service online **one at a time** and re-test between each — easier to debug.
