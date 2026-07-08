@@ -11,7 +11,20 @@ import json
 
 from app.companion import facts_from_prompt, transcript_from_prompt
 
-_QUESTION_STARTS = ("what", "who", "do you remember", "did i", "recall", "am i")
+# Recall must be memory-referential, not any question: "what am I allergic to"
+# is recall, but "what is in front of me" is a scene question (describe). Keying
+# on bare "what"/"who" swallowed scene questions, so require specific phrasing.
+_QUESTION_STARTS = (
+    "do you remember",
+    "did i",
+    "recall",
+    "what did i",
+    "what do you remember",
+    "what am i",
+    "who am i",
+    "who is",
+    "am i",
+)
 
 
 class MockVision:
@@ -19,9 +32,21 @@ class MockVision:
         await asyncio.sleep(0.15)  # pretend we called a vision model
         said = transcript_from_prompt(question).lower()
 
-        intent, spoken, memory_add, reminder = "describe", "", None, None
+        intent, spoken, memory_add, reminder, navigation = "describe", "", None, None, None
 
-        if any(w in said for w in ("read", "label", "menu", "sign", "mail")):
+        if any(w in said for w in ("take me", "walk me", "navigate", "directions to")):
+            intent = "navigate"
+            dest = said.split(" to ", 1)[1].strip() if " to " in said else "your destination"
+            spoken = f"[mock] Okay, taking you to {dest}."
+            navigation = {"action": "start", "destination": dest}
+        elif "where am i" in said or "where are we" in said:
+            intent = "where_am_i"
+            spoken = "[mock] The footpath ahead is clear; a doorway is on your left."
+        elif "stop" in said and ("navigat" in said or "direction" in said or "route" in said):
+            intent = "stop_navigation"
+            spoken = "[mock] Navigation stopped."
+            navigation = {"action": "stop"}
+        elif any(w in said for w in ("read", "label", "menu", "sign", "mail")):
             intent = "read"
             spoken = "[mock] The label reads: Whole Milk, best before June 5th."
         elif any(w in said for w in ("find", "where", "locate")):
@@ -55,5 +80,11 @@ class MockVision:
             )
 
         return json.dumps(
-            {"intent": intent, "spoken": spoken, "memory_add": memory_add, "reminder": reminder}
+            {
+                "intent": intent,
+                "spoken": spoken,
+                "memory_add": memory_add,
+                "reminder": reminder,
+                "navigation": navigation,
+            }
         )

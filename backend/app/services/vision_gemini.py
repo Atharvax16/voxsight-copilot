@@ -7,11 +7,15 @@ interface as the other vision providers, so the orchestrator is unchanged.
 Endpoint: POST .../models/{model}:generateContent?key=API_KEY
 """
 
+import asyncio
+
 import httpx
 
 from app.config import settings
 
 BASE = "https://generativelanguage.googleapis.com/v1beta/models"
+# Transient statuses worth retrying — Gemini occasionally 503s under load.
+_RETRY = {429, 500, 502, 503, 504}
 
 
 class GeminiVision:
@@ -42,8 +46,17 @@ class GeminiVision:
                 "thinkingConfig": {"thinkingBudget": 0},
             },
         }
-        async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.post(url, json=payload)
+        async with httpx.AsyncClient(timeout=90) as client:
+            # Retry transient overloads / rate limits (503/429/…) with a growing
+            # backoff so a momentary Gemini blip or a rate-limit window clears
+            # instead of killing the turn.
+            delays = [2.0, 6.0]
+            for attempt in range(len(delays) + 1):
+                resp = await client.post(url, json=payload)
+                if resp.status_code in _RETRY and attempt < len(delays):
+                    await asyncio.sleep(delays[attempt])
+                    continue
+                break
             resp.raise_for_status()
             body = resp.json()
 

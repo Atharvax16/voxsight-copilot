@@ -15,13 +15,16 @@ from dataclasses import dataclass
 
 # Recognized intents. `other` is the catch-all.
 INTENTS = (
-    "describe",       # describe the scene / answer about what's visible
-    "read",           # read text in view (mail, labels, menus, signs)
-    "find",           # locate a specific object and say where it is
-    "remember",       # store a fact the user tells us (person, place, preference, allergy)
-    "recall",         # answer from what we remember
-    "remind",         # create a reminder
-    "list_reminders", # read back reminders
+    "describe",        # describe the scene / answer about what's visible
+    "read",            # read text in view (mail, labels, menus, signs)
+    "find",            # locate a specific object and say where it is
+    "remember",        # store a fact the user tells us (person, place, preference, allergy)
+    "recall",          # answer from what we remember
+    "remind",          # create a reminder
+    "list_reminders",  # read back reminders
+    "navigate",        # start walking directions to a place
+    "where_am_i",      # say the current location + describe surroundings
+    "stop_navigation", # cancel the active route
     "other",
 )
 
@@ -36,6 +39,7 @@ class CompanionResult:
     spoken: str
     memory_add: str | None = None       # Phase 2: a fact to persist
     reminder: dict | None = None        # Phase 3: {"text": ..., "when": ...}
+    navigation: dict | None = None      # {"action": "start"|"stop", "destination": ...}
 
 
 def build_prompt(transcript: str, facts: list[str], reminders: list[dict]) -> str:
@@ -65,12 +69,15 @@ Choose exactly ONE intent and act on it:
 - recall: they're asking about something they told you before; answer from what you remember.
 - remind: they want a reminder. Put it in "reminder" as {{"text": "...", "when": "..."}} and acknowledge.
 - list_reminders: read back their reminders.
+- navigate: they want to walk somewhere ("take me to...", "walk me to...", "directions to..."). Put the destination in "navigation" as {{"action": "start", "destination": "<place they named>"}}. Keep "spoken" a brief acknowledgement — the actual directions are added afterwards.
+- where_am_i: they're asking where they are. Describe the immediate surroundings from the image; the street/place name is added afterwards.
+- stop_navigation: they want to stop the current directions. Set "navigation" to {{"action": "stop"}}.
 - other: anything else; help as best you can.
 
 Use what you remember when relevant (for example, warn about allergens when reading a menu).
 
 Reply with ONLY a JSON object, no markdown fences, exactly:
-{{"intent": "<one of the above>", "spoken": "<what to say>", "memory_add": null, "reminder": null}}"""
+{{"intent": "<one of the above>", "spoken": "<what to say>", "memory_add": null, "reminder": null, "navigation": null}}"""
 
 
 def parse(raw: str, transcript: str = "") -> CompanionResult:
@@ -92,7 +99,10 @@ def parse(raw: str, transcript: str = "") -> CompanionResult:
                     reminder = None
                 mem = data.get("memory_add")
                 mem = mem.strip() if isinstance(mem, str) and mem.strip() else None
-                return CompanionResult(intent, spoken, mem, reminder)
+                nav = data.get("navigation")
+                if not isinstance(nav, dict) or nav.get("action") not in ("start", "stop"):
+                    nav = None
+                return CompanionResult(intent, spoken, mem, reminder, nav)
         except (ValueError, AttributeError):
             pass
 

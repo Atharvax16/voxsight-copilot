@@ -5,7 +5,12 @@ writing its module and adding one line here.
 """
 
 from app.config import settings
-from app.services.base import STTService, TTSService, VisionService
+from app.services.base import (
+    NavigationService,
+    STTService,
+    TTSService,
+    VisionService,
+)
 
 
 def get_stt() -> STTService:
@@ -48,3 +53,13 @@ def get_tts() -> TTSService:
     from app.services.tts_mock import MockTTS
 
     return MockTTS()
+
+
+def get_navigation() -> NavigationService:
+    if settings.nav_provider == "openrouteservice":
+        from app.services.navigation import OpenRouteServiceNavigation
+
+        return OpenRouteServiceNavigation()
+    from app.services.navigation import MockNavigation
+
+    return MockNavigation()
