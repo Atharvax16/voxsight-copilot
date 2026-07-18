@@ -1,30 +1,67 @@
 # VoxSight
 
 Real-time accessibility co-pilot for visually impaired users. Point a camera, hold a button, ask a
-question by voice → get a spoken answer describing your surroundings.
+question by voice → get a spoken answer describing your surroundings, reading text aloud, finding
+an object, or giving you walking directions.
 
-Pipeline: **audio + camera frame → STT → Qwen Vision → ElevenLabs TTS → audio back**, over WebSocket.
+Pipeline: **audio + camera frame → STT → Vision/companion brain → TTS → audio back**, over WebSocket.
 
-Full spec: [`voxsight_technical_blueprint.md`](./voxsight_technical_blueprint.md).
+Original concept doc: [`voxsight_technical_blueprint.md`](./voxsight_technical_blueprint.md) (the
+initial hackathon plan — the architecture has since grown past it; treat it as historical context,
+not the current spec).
 
 ---
 
-## Status: pre-hackathon skeleton (mock mode)
+## Status: active development
 
-The whole app runs **end-to-end tonight with zero API keys.** Every AI service has a swappable
-provider selected by an env flag; tonight they're all `mock`. Tomorrow you paste keys and flip flags —
-no code changes needed in the pipeline.
+The core pipeline is real and working end-to-end, with live providers available for every stage
+(not just mocks). It's still a single-user prototype: no auth, no deployment, no persistence beyond
+a local JSON file. See [Roadmap](#roadmap--known-gaps) for what's solid vs. still in progress.
 
 ```
 Browser (Next.js)            FastAPI backend
  camera ─ frame ─┐
- mic ─ audio ────┼─ WS /ws ─► Orchestrator ─► STT ─► Vision ─► TTS ─► audio back
- audio playback ◄┘                          (mock|wispr)(mock|qwen)(mock|elevenlabs)
+ mic ─ audio ────┼─ WS /ws ─► Orchestrator ─► STT ─► Companion/Vision ─► TTS ─► audio back
+ location ───────┤                          (mock|elevenlabs|wispr)  │      (mock|elevenlabs)
+ audio playback ◄┘                                                    ├─► Memory (facts/reminders)
+                                                                       └─► Navigation (route/geocode)
 ```
+
+Every service is swappable behind an env flag (`*_PROVIDER`); mock providers make the whole app
+runnable offline with zero API keys.
 
 ---
 
-## Run locally (mock mode — works right now)
+## What it can do
+
+One vision call doubles as the "companion brain" — it decides intent from the spoken request and
+image, then replies with speech plus any side effects. Recognized intents:
+
+| Say… | Intent | What happens |
+| :--- | :--- | :--- |
+| "What's in front of me?" | `describe` | Describes the scene. |
+| "Read this to me" | `read` | Reads visible text (mail, labels, menus, signs). |
+| "Find my keys" | `find` | Locates an object in view and says where it is. |
+| "Remember I'm allergic to peanuts" | `remember` | Persists a fact for future turns. |
+| "What am I allergic to?" | `recall` | Answers from remembered facts. |
+| "Take me to the pharmacy on Dawson Street" | `navigate` | Geocodes, routes on foot, speaks the first step. |
+| "Where am I?" | `where_am_i` | Reverse-geocodes location and describes surroundings. |
+| "Stop navigation" | `stop_navigation` | Clears the active route. |
+| "Remind me to..." / "What are my reminders?" | `remind` / `list_reminders` | Recognized, not yet applied — see [Roadmap](#roadmap--known-gaps). |
+
+Turn-by-turn navigation is **deterministic** once a route starts — a routing engine produces the
+steps, not the AI, so it costs no model calls per step. The browser streams position
+(`watchPosition`) as the user walks; the backend announces the next maneuver only when they come
+within `NAV_ANNOUNCE_M` of it, and arrival within `NAV_ARRIVE_M`. Location is opt-in (tap **Enable
+navigation**) and used transiently — it is **not** persisted.
+
+> ⚠️ **Safety:** walk-mode directions are *advisory* and can be wrong or delayed. VoxSight
+> complements a white cane or guide dog — it does not replace them, and a phone can't watch
+> the road for you. This is stated in-app and worth repeating in any demo.
+
+---
+
+## Run locally
 
 **Backend** (Python 3.11+):
 
@@ -54,14 +91,20 @@ mock transcript + answer and hear a short tone (mock TTS). That proves the full 
 > Camera/mic need a secure context. `localhost` is fine. To test from a phone, use HTTPS or an
 > `ngrok`/`cloudflared` tunnel to both servers.
 
+**Backend tests** (offline, zero API cost, mock providers only):
+
+```bash
+cd backend
+.venv/Scripts/python -m pytest
+```
+
 ---
 
-## Demo mode — present & record video without burning credits
+## Demo mode — record or present without burning API credits
 
-Live API calls cost credits (ElevenLabs' free tier is ~10 min of audio total),
-so **don't demo off the real APIs** — you can hit a limit mid-presentation. Instead
-capture a few real responses once, then replay them for free. Set `DEMO_MODE` in
-`backend/.env`:
+Live API calls cost credits, so don't rehearse or demo off the real APIs — you can hit a rate
+limit mid-presentation. Instead, capture a few real responses once, then replay them for free. Set
+`DEMO_MODE` in `backend/.env`:
 
 | Mode | What it does |
 | :--- | :--- |
@@ -74,85 +117,57 @@ capture a few real responses once, then replay them for free. Set `DEMO_MODE` in
 1. `DEMO_MODE=capture`, restart backend. Open the app and ask your scripted
    questions while pointing the camera at real things. Each turn is saved
    (`recordings/manifest.json` + `clip_NNN.mp3`). This spends a little credit — once.
-2. `DEMO_MODE=replay`, restart backend. Now rehearse, present, and record the
-   promo video as many times as you like — **free**. Replay matches the saved clip
+2. `DEMO_MODE=replay`, restart backend. Now rehearse, present, and record
+   video as many times as you like — **free**. Replay matches the saved clip
    whose question best overlaps what you ask, so say a captured question and you get
    that exact real answer + audio back.
 3. `/health` shows the active `demo_mode` so you can confirm you're safe before
    going on camera.
 
-> Deploying the demo? Commit `backend/recordings/` and run the server with
-> `DEMO_MODE=replay` so random clicks on your live link never drain credits.
+> If you ever deploy this somewhere public, commit `backend/recordings/` and run with
+> `DEMO_MODE=replay` so random visitors never drain your API credits.
 
 ---
 
-## Navigation & walk mode (Phase 1)
+## Configuration (`backend/.env`)
 
-VoxSight can give **spoken walking directions**, not just describe what's in front of
-you. It reuses the same voice button — the companion decides the intent — plus your
-device location.
+Bring each service online independently and re-test after each change — easier to debug.
 
-**What you can say:**
+**Vision** (the core — describes, reads, finds, and decides intent):
 
-| Say… | Intent | What happens |
-| :--- | :--- | :--- |
-| "Take me to the pharmacy on Dawson Street" | `navigate` | Geocodes the place, routes on foot, speaks the first step. |
-| "Where am I?" | `where_am_i` | Reverse-geocodes your location and describes the surroundings. |
-| "Stop navigation" | `stop_navigation` | Clears the active route. |
+```
+VISION_PROVIDER=gemini        # or: fal, qwen, mock
+GEMINI_API_KEY=<key>          # gemini_model defaults to gemini-2.5-flash
+```
+`fal` proxies a VLM (default Gemini 2.5 Flash Lite) through fal.ai; `qwen` uses DashScope's
+`qwen-vl-max`. See `app/services/vision_*.py`.
 
-Turn-by-turn is **deterministic** — a routing engine produces the steps, not the AI —
-so it costs no model calls per step. Once a route is active, the browser streams your
-position (`watchPosition`) as lightweight `location` messages; the backend announces the
-next maneuver only when you come within `NAV_ANNOUNCE_M` of it, and arrival within
-`NAV_ARRIVE_M`. Tap **Enable navigation** in the app to opt in (this triggers the
-browser's location prompt). Location is used transiently and is **not** persisted.
+**TTS:**
 
-**Config** (`backend/.env`): `NAV_PROVIDER=mock` runs fully offline (canned route — good
-for the demo/replay). For live directions:
+```
+TTS_PROVIDER=elevenlabs
+ELEVENLABS_API_KEY=<key>
+ELEVENLABS_VOICE_ID=<voice id>   # optional
+```
+
+**STT:**
+
+```
+STT_PROVIDER=elevenlabs       # Scribe model; or: wispr
+ELEVENLABS_API_KEY=<key>
+```
+The frontend can also transcribe in-browser via the Web Speech API (`NEXT_PUBLIC_STT_MODE=browser`,
+the default) and skip backend STT entirely.
+
+**Navigation:**
 
 ```
 NAV_PROVIDER=openrouteservice
 OPENROUTESERVICE_API_KEY=<free key from openrouteservice.org>
 ```
+`mock` (default) runs fully offline with a canned route — good for tests/demo/replay.
 
-> ⚠️ **Safety:** walk-mode directions are *advisory* and can be wrong or delayed. VoxSight
-> complements a white cane or guide dog — it does not replace them, and a phone can't watch
-> the road for you. This is stated in-app and worth repeating in any demo.
-
----
-
-## Tomorrow: go live (key-swap checklist)
-
-Bring each service online **one at a time** and re-test between each — easier to debug.
-
-1. **Vision (Qwen)** — the core. In `backend/.env`:
-   ```
-   VISION_PROVIDER=qwen
-   QWEN_API_KEY=<your DashScope key>
-   QWEN_MODEL=qwen-vl-max
-   ```
-   Restart backend, verify `/health`, ask a question. See `app/services/vision_qwen.py`
-   (`# TODO verify` notes: confirm intl vs. cn endpoint + model name).
-
-2. **TTS (ElevenLabs)**:
-   ```
-   TTS_PROVIDER=elevenlabs
-   ELEVENLABS_API_KEY=<key>
-   ELEVENLABS_VOICE_ID=<voice id>   # optional
-   ```
-   See `app/services/tts_elevenlabs.py`.
-
-3. **STT (Wispr / fallback)**:
-   ```
-   STT_PROVIDER=wispr
-   WISPR_API_KEY=<key>
-   ```
-   ⚠️ Wispr Flow may not expose a usable public transcription API. If not, edit
-   `app/services/stt_wispr.py` to call **OpenAI Whisper** instead
-   (`POST https://api.openai.com/v1/audio/transcriptions`, `model=whisper-1`) — the orchestrator
-   doesn't change.
-
-Then: tune the Qwen prompt in `app/orchestrator.py` (`PROMPT_TEMPLATE`) and practice the demo.
+Then tune the companion prompt in `app/companion.py` (`build_prompt`) as needed.
 
 ### Adding a provider
 
@@ -161,11 +176,18 @@ branch in `app/services/factory.py`. That's it.
 
 ---
 
-## Deploy (stretch, tomorrow if time)
+## Roadmap / known gaps
 
-- **Frontend** → Netlify/Vercel. Set `NEXT_PUBLIC_WS_URL` to the deployed backend's `wss://` URL.
-- **Backend** → Render/Railway. Set env vars (providers + keys). Add the frontend origin to
-  `ALLOWED_ORIGINS`.
+- **Reminders** — `remind` / `list_reminders` intents are recognized and the data model exists in
+  `memory_store.py`, but the orchestrator doesn't act on them yet (see the `# Reminders are applied
+  in Phase 3` note in `orchestrator.py`).
+- **Deployment** — no Dockerfile, CI, or hosting config yet. Suggested path when ready: frontend to
+  Netlify/Vercel (`NEXT_PUBLIC_WS_URL` → deployed backend's `wss://` URL), backend to
+  Render/Railway (env vars for providers/keys, plus the frontend origin in `ALLOWED_ORIGINS`).
+- **Persistence** — memory is a single-user local JSON file (`backend/memory_store.json`); no
+  multi-user accounts or database yet.
+- **Wispr STT** — `app/services/stt_wispr.py` is unverified against a real Wispr Flow endpoint;
+  ElevenLabs Scribe (`STT_PROVIDER=elevenlabs`) is the tested live path.
 
 ---
 
@@ -174,16 +196,24 @@ branch in `app/services/factory.py`. That's it.
 ```
 backend/app/
   main.py          FastAPI: /health + WebSocket /ws
-  orchestrator.py  STT → Vision → TTS pipeline + prompt template
-  config.py        env settings (*_PROVIDER flags, keys)
+  orchestrator.py  STT → Companion/Vision → TTS pipeline, navigation side effects
+  companion.py     Intent routing: builds the prompt, parses model reply into intent + side effects
+  memory_store.py  Persistent facts/reminders (JSON), injected into every companion prompt
+  nav_state.py     Per-connection route state; pure geometry decides when to announce/arrive
+  demo.py          Capture/replay recording store for demo mode
+  config.py        env settings (*_PROVIDER flags, keys, nav/demo tuning)
   services/
-    base.py        STT/Vision/TTS protocols
+    base.py        STT/Vision/TTS/Navigation protocols
     factory.py     picks impl from *_PROVIDER
-    *_mock.py      canned responses (mock TTS emits a real WAV tone)
-    stt_wispr.py / vision_qwen.py / tts_elevenlabs.py   live stubs (# TODO verify)
+    *_mock.py       canned responses (mock TTS emits a real WAV tone)
+    stt_elevenlabs.py / stt_wispr.py
+    vision_gemini.py / vision_fal.py / vision_qwen.py
+    tts_elevenlabs.py
+    navigation.py   OpenRouteService + mock navigation, haversine helpers
 frontend/src/
-  app/page.tsx        main demo UI
+  app/page.tsx           main UI: camera, status, navigation panel, transcript/answer, mic
   components/Camera.tsx  getUserMedia + frame capture
-  components/Mic.tsx     push-to-talk recorder
-  lib/useSocket.ts       WS client + audio playback
+  components/Mic.tsx     push-to-talk recorder (browser or backend STT)
+  lib/useSocket.ts       WS client + audio playback + navStep state
+  lib/useGeolocation.ts  opt-in location sharing for navigation
 ```
